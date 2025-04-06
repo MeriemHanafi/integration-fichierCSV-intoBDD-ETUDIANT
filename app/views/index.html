@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Intégration Étudiants</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        .form-group { margin-bottom: 15px; }
+        select { width: 100%; padding: 8px; }
+    </style>
+</head>
+<body>
+    <h1>Intégration des données étudiantes</h1>
+    
+    <div class="form-group">
+        <label for="university">Université:</label>
+        <select id="university" required>
+            <option value="">-- Choisir Université --</option>
+            <!-- Dynamiquement rempli via JavaScript -->
+        </select>
+    </div>
+    
+    <div class="form-group">
+        <label for="faculty">Faculté:</label>
+        <select id="faculty" disabled required>
+            <option value="">-- Choisir d'abord une université --</option>
+        </select>
+    </div>
+    
+    <div class="form-group">
+        <label for="department">Département:</label>
+        <select id="department" disabled required>
+            <option value="">-- Choisir d'abord une faculté --</option>
+        </select>
+    </div>
+    
+    <div class="form-group">
+        <label for="academicYear">Année académique:</label>
+        <select id="academicYear" required>
+            <option value="">-- Choisir année --</option>
+            <!-- Dynamiquement rempli via JavaScript -->
+        </select>
+    </div>
+    
+    <h2>Upload de fichier CSV</h2>
+    <form id="uploadForm" enctype="multipart/form-data">
+        <input type="file" name="file" accept=".csv" required />
+        <button type="submit">Importer Étudiants</button>
+    </form>
+    
+    <div id="result"></div>
+    
+    <script>
+    $(document).ready(function() {
+        // Charger les universités et années académiques
+        async function loadInitialData() {
+            try {
+                // Charger les universités via API
+                const universities = await $.get('/api/universities');
+                universities.forEach(uni => {
+                    $('#university').append(
+                        `<option value="${uni.idUni}">${uni.nomUni}</option>`
+                    );
+                });
+                // Charger les années académiques
+                const years = await $.get('/api/academicYears');
+                years.forEach(year => {
+                    $('#academicYear').append(
+                        `<option value="${year.idAnnee}" ${year.isCurrent ? 'selected' : ''}>
+                            ${year.annee}
+                        </option>`
+                    );
+                });
+            } catch (error) {
+                console.error(error);
+            }
+        }
+        
+        // Écouter le changement d'université
+        $('#university').change(async function() {
+            const uniId = $(this).val();
+            if (!uniId) return;
+            
+            try {
+                const faculties = await $.get('/api/faculties', { universityId: uniId });
+                $('#faculty').empty().append('<option value="">-- Choisir Faculté --</option>');
+                faculties.forEach(fac => {
+                    $('#faculty').append(`<option value="${fac.idFaculty}">${fac.nomFaculty}</option>`);
+                });
+                $('#faculty').prop('disabled', false);
+                $('#department').val('').prop('disabled', true);
+            } catch (error) {
+                console.error(error);
+            }
+        });
+        
+        // Écouter le changement de faculté
+        $('#faculty').change(async function() {
+            const facId = $(this).val();
+            if (!facId) return;
+            
+            try {
+                const departments = await $.get('/api/departments', { facultyId: facId });
+                $('#department').empty().append('<option value="">-- Choisir Département --</option>');
+                departments.forEach(dept => {
+                    $('#department').append(`<option value="${dept.idDepart}">${dept.nomDepart}</option>`);
+                });
+                $('#department').prop('disabled', false);
+            } catch (error) {
+                console.error(error);
+            }
+        });
+        
+        // Gérer l'upload du fichier
+        $('#uploadForm').submit(function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            formData.append('facultyId', $('#faculty').val());
+            formData.append('departmentId', $('#department').val());
+            formData.append('anneeId', $('#academicYear').val());
+            
+            $.ajax({
+                url: '/api/file/upload',
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function(response) {
+                    $('#result').html(`
+                        <div style="margin-top:20px;padding:10px;background:#f0f0f0;">
+                            <p><strong>Statut:</strong> ${response.status}</p>
+                            <p><strong>Fichier:</strong> ${response.filename}</p>
+                            <p><strong>Message:</strong> ${response.message}</p>
+                            ${response.count ? `<p><strong>Étudiants importés:</strong> ${response.count}</p>` : ''}
+                        </div>
+                    `);
+                },
+                error: function(xhr) {
+                    $('#result').html(`
+                        <div style="margin-top:20px;padding:10px;background:#ffebee;color:#d32f2f;">
+                            <p><strong>Erreur:</strong> ${xhr.responseJSON?.message || 'Erreur inconnue'}</p>
+                        </div>
+                    `);
+                }
+            });
+        });
+        
+        // Initialiser la page
+        loadInitialData();
+    });
+    </script>
+</body>
+</html>
